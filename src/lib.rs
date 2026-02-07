@@ -93,6 +93,12 @@ impl GTIN {
                 ean13_digits[1..13].copy_from_slice(&digits[0..12]); // Copy UPC-A digits, including the check digit
                 Some(GTIN::Ean13(ean13_digits))
             }
+            GTIN::UpcE(digits) => {
+                let expanded_to_upca = util::expand_upce_to_upca(&digits).ok()?;
+                let mut ean13_digits = [0; 13]; // Initialize all elements to zero
+                ean13_digits[1..13].copy_from_slice(&expanded_to_upca.digits()[0..12]); // Copy UPC-A digits, excluding the check digit
+                Some(GTIN::Ean13(ean13_digits))
+            }
             _ => None, // For other GTIN types, we return None TODO: Implement conversion for other GTIN types
         }
     }
@@ -100,7 +106,6 @@ impl GTIN {
     pub fn country_code(&self) -> Option<&'static str> {
         // TODO: implement strong types? https://github.com/rust-iso/rust_iso3166
         match self.number_system() {
-            // Check special conditions for non-general number systems
             NumberSystem::Drug => Some("US"), // US drug or supplement
             // Check special conditions for non-general number systems
             NumberSystem::StoreUse
