@@ -1,4 +1,4 @@
-use crate::{NumberSystem, GTIN};
+use crate::{GTIN, NumberSystem};
 
 #[test]
 fn determine_number_system() {
@@ -34,7 +34,7 @@ fn determine_country_code() {
         ("8 410175 086501", Some("ES")), // EAN-13
         ("0 71720 53977 4", Some("US")), // UPC-A
         ("0 41420 06785 3", Some("US")), // UPC-A
-        ("0 123450 5", Some("US")), // UPC-E
+        ("0 123450 5", Some("US")),      // UPC-E
         ("02 45678 1 0543 9", None),     // Store Use, variable
     ];
 
@@ -131,7 +131,7 @@ fn deserialize_invalid_gtin() {
         gtin: GTIN,
     }
     // Invalid GTIN, check digit should be 4, not 5
-    let json_data = r#"{"name":"Oreo","gtin":"071720539775"}"#; 
+    let json_data = r#"{"name":"Oreo","gtin":"071720539775"}"#;
     let result: Result<Product, serde_json::Error> = serde_json::from_str(json_data);
     assert!(
         result.is_err(),

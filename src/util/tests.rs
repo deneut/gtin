@@ -7,7 +7,7 @@ use super::extract_digits;
 fn expand_upce() {
     let cases = vec![
         ("04182635", "041800000265"),
-        ("0 123450 5", "0 12000 00345 5")
+        ("0 123450 5", "0 12000 00345 5"),
     ];
 
     for (upce_str, expected_upca_str) in cases {
@@ -50,20 +50,19 @@ fn validate_digits() {
     }
 }
 
-
 #[test]
 fn handle_non_digit_characters() {
     let cases = vec![
-        "8595701-530526",   // EAN-13
-        "8595701 542376",   // EAN-13
-        "8:595682:148871",   // EAN-13
-        "0h71720 53977 4",  // UPC-A
-        "0 41420_06785_3",   // UPC-A
-        "5201 3485"        // EAN-8
+        "8595701-530526",  // EAN-13
+        "8595701 542376",  // EAN-13
+        "8:595682:148871", // EAN-13
+        "0h71720 53977 4", // UPC-A
+        "0 41420_06785_3", // UPC-A
+        "5201 3485",       // EAN-8
     ];
 
     for gtin_str in cases {
-      let gtin = crate::GTIN::try_from(gtin_str);
+        let gtin = crate::GTIN::try_from(gtin_str);
         assert!(gtin.is_ok(), "Failed to parse GTIN: {}", gtin_str);
     }
 }
