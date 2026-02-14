@@ -1,52 +1,118 @@
-use crate::{GTIN, NumberSystem};
+use crate::{GTIN, GtinError, NumberSystem};
+
+#[test]
+fn parse_formats() {
+    let cases = vec![
+        ("071720539774", "UPC-A"),
+        ("04182634", "UPC-E"),
+        ("52013485", "EAN-8"),
+        ("8595701530526", "EAN-13"),
+        ("00012345678905", "GTIN-14"),
+    ];
+
+    for (input, expected_format) in cases {
+        let gtin = GTIN::try_from(input).unwrap();
+        assert_eq!(gtin.format_name(), expected_format, "input: {input}");
+    }
+}
 
 #[test]
 fn determine_number_system() {
     let cases = vec![
-        ("8595701 530526", NumberSystem::General),  // EAN-13
-        ("8595701 542376", NumberSystem::General),  // EAN-13
-        ("8 595682 148871", NumberSystem::General), // EAN-13
-        ("0 71720 53977 4", NumberSystem::General), // UPC-A
-        ("0 41420 06785 3", NumberSystem::General), // UPC-A
-        // ("5201 3485", NumberSystem::General),          // EAN-8 TODO: Implement EAN-8
-        ("9783161484100", NumberSystem::Isbn),         // ISBN
-        ("9772434561006", NumberSystem::Issn),         // ISSN
-        ("02 45678 1 0543 9", NumberSystem::StoreUse), // Store Use, variable
+        ("8595701 530526", NumberSystem::General),
+        ("8595701 542376", NumberSystem::General),
+        ("8 595682 148871", NumberSystem::General),
+        ("0 71720 53977 4", NumberSystem::General),
+        ("0 41420 06785 3", NumberSystem::General),
+        ("5201 3485", NumberSystem::General),
+        ("9783161484100", NumberSystem::Isbn),
+        ("9772434561006", NumberSystem::Issn),
+        ("02 45678 1 0543 9", NumberSystem::StoreUse),
     ];
 
-    cases.into_iter().for_each(|(gtin, number_system)| {
-        let gtin = crate::GTIN::try_from(gtin).unwrap();
-        assert_eq!(
-            gtin.number_system(),
-            number_system,
-            "Failed to match GTIN: {}",
-            gtin
-        );
-    });
+    for (input, expected) in &cases {
+        let gtin = GTIN::try_from(*input).unwrap();
+        assert_eq!(gtin.number_system(), *expected, "input: {input}");
+    }
 }
 
 #[test]
 fn determine_country_code() {
     let cases = vec![
-        ("8595701 530526", Some("CZ")),  // EAN-13
-        ("8595701 542376", Some("CZ")),  // EAN-13
-        ("8 595682 148871", Some("CZ")), // EAN-13
-        ("8 410175 086501", Some("ES")), // EAN-13
-        ("0 71720 53977 4", Some("US")), // UPC-A
-        ("0 41420 06785 3", Some("US")), // UPC-A
-        ("0 123450 5", Some("US")),      // UPC-E
-        ("02 45678 1 0543 9", None),     // Store Use, variable
+        ("8595701 530526", Some("CZ")),
+        ("8595701 542376", Some("CZ")),
+        ("8 595682 148871", Some("CZ")),
+        ("8 410175 086501", Some("ES")),
+        ("0 71720 53977 4", Some("US")),
+        ("0 41420 06785 3", Some("US")),
+        ("0 123450 3", Some("US")),
+        ("5201 3485", Some("GR")),
+        ("02 45678 1 0543 9", None),
     ];
 
-    cases.into_iter().for_each(|(gtin, country_code)| {
-        let gtin = crate::GTIN::try_from(gtin).unwrap();
-        assert_eq!(
-            gtin.country_code(),
-            country_code,
-            "Failed to match GTIN: {}",
-            gtin
-        );
-    });
+    for (input, expected) in &cases {
+        let gtin = GTIN::try_from(*input).unwrap();
+        assert_eq!(gtin.country_code(), *expected, "input: {input}");
+    }
+}
+
+#[test]
+fn reject_invalid_checksum() {
+    let result = GTIN::try_from("071720539775");
+    assert_eq!(result, Err(GtinError::InvalidChecksum));
+}
+
+#[test]
+fn reject_invalid_length() {
+    let result = GTIN::try_from("12345");
+    assert_eq!(result, Err(GtinError::InvalidLength(5)));
+}
+
+#[test]
+fn display_outputs_digits_only() {
+    let gtin = GTIN::UpcA([0, 7, 1, 7, 2, 0, 5, 3, 9, 7, 7, 4]);
+    assert_eq!(gtin.to_string(), "071720539774");
+}
+
+#[test]
+fn format_name() {
+    assert_eq!(
+        GTIN::UpcA([0, 7, 1, 7, 2, 0, 5, 3, 9, 7, 7, 4]).format_name(),
+        "UPC-A"
+    );
+    assert_eq!(
+        GTIN::Ean13([8, 5, 9, 5, 7, 0, 1, 5, 3, 0, 5, 2, 6]).format_name(),
+        "EAN-13"
+    );
+}
+
+#[test]
+fn parse_from_str_trait() {
+    let gtin: GTIN = "071720539774".parse().unwrap();
+    assert_eq!(gtin, GTIN::UpcA([0, 7, 1, 7, 2, 0, 5, 3, 9, 7, 7, 4]));
+}
+
+#[test]
+fn explicit_parse_ean8() {
+    // "04182634" starts with 0 so try_from would classify it as UPC-E,
+    // but parse_ean8 forces EAN-8.
+    let gtin = GTIN::parse_ean8("04182634").unwrap();
+    assert_eq!(gtin.format_name(), "EAN-8");
+}
+
+#[test]
+fn explicit_parse_upce() {
+    // "52013485" starts with non-zero so try_from would classify it as EAN-8,
+    // but parse_upce forces UPC-E.
+    let gtin = GTIN::parse_upce("52013485").unwrap();
+    assert_eq!(gtin.format_name(), "UPC-E");
+}
+
+#[test]
+fn len() {
+    assert_eq!(GTIN::try_from("071720539774").unwrap().len(), 12);
+    assert_eq!(GTIN::try_from("8595701530526").unwrap().len(), 13);
+    assert_eq!(GTIN::try_from("52013485").unwrap().len(), 8);
 }
 
 // serde tests
@@ -69,7 +135,7 @@ fn deserialize_upca_with_spaces() {
 }
 
 #[test]
-fn deserialize_upca_with_spaces_and_missing_initial_zero() {
+fn deserialize_upca_with_missing_initial_zero() {
     let data = "\"71720 53977 4\"";
     let deserialized: GTIN = serde_json::from_str(data).unwrap();
     match deserialized {
