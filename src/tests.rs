@@ -4,6 +4,7 @@ use crate::{GTIN, GtinError, NumberSystem};
 fn parse_formats() {
     let cases = vec![
         ("071720539774", "UPC-A"),
+        ("0041303073414", "UPC-A"),
         ("04182634", "UPC-E"),
         ("52013485", "EAN-8"),
         ("8595701530526", "EAN-13"),

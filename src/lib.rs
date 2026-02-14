@@ -97,6 +97,10 @@ impl TryFrom<&str> for GTIN {
                 Ok(GTIN::UpcA(digits.try_into().unwrap()))
             }
             12 => Ok(GTIN::UpcA(digits.try_into().unwrap())),
+            // EAN-13 with a leading 0 is equivalent to a UPC-A; prefer the
+            // more specific representation so round-tripping through databases
+            // that zero-pad UPC-A codes recovers the original format.
+            13 if digits[0] == 0 => Ok(GTIN::UpcA(digits[1..].try_into().unwrap())),
             13 => Ok(GTIN::Ean13(digits.try_into().unwrap())),
             14 => Ok(GTIN::Gtin14(digits.try_into().unwrap())),
             n => Err(GtinError::InvalidLength(n)),
