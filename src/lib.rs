@@ -2,6 +2,11 @@
 //!
 //! Supports UPC-A, UPC-E, EAN-8, EAN-13, and GTIN-14 formats.
 //!
+//! Optional features:
+//!
+//! - `random`: random GTIN generation with valid checksums.
+//! - `serde`: JSON-friendly serialization and deserialization support.
+//!
 //! # Examples
 //!
 //! ```
@@ -14,6 +19,9 @@
 
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "random")]
+use rand::Rng;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 mod util;
@@ -52,6 +60,48 @@ pub enum GTIN {
     Ean8([u8; 8]),
     Ean13([u8; 13]),
     Gtin14([u8; 14]),
+}
+
+/// A supported GTIN type/format.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+pub enum GtinType {
+    UpcE,
+    UpcA,
+    Ean8,
+    Ean13,
+    Gtin14,
+}
+
+impl GtinType {
+    /// All GTIN types supported by this crate.
+    pub const ALL: [Self; 5] = [
+        Self::UpcE,
+        Self::UpcA,
+        Self::Ean8,
+        Self::Ean13,
+        Self::Gtin14,
+    ];
+
+    /// Returns the number of digits used by this GTIN type.
+    pub const fn digit_count(self) -> usize {
+        match self {
+            Self::UpcE | Self::Ean8 => 8,
+            Self::UpcA => 12,
+            Self::Ean13 => 13,
+            Self::Gtin14 => 14,
+        }
+    }
+
+    /// Returns the display name of this GTIN type (e.g., "UPC-A", "EAN-13").
+    pub const fn format_name(self) -> &'static str {
+        match self {
+            Self::UpcE => "UPC-E",
+            Self::UpcA => "UPC-A",
+            Self::Ean8 => "EAN-8",
+            Self::Ean13 => "EAN-13",
+            Self::Gtin14 => "GTIN-14",
+        }
+    }
 }
 
 impl Display for GTIN {
@@ -120,21 +170,77 @@ impl GTIN {
         }
     }
 
+    /// Returns the specific GTIN type/format represented by this value.
+    pub fn gtin_type(&self) -> GtinType {
+        match self {
+            GTIN::UpcE(_) => GtinType::UpcE,
+            GTIN::UpcA(_) => GtinType::UpcA,
+            GTIN::Ean8(_) => GtinType::Ean8,
+            GTIN::Ean13(_) => GtinType::Ean13,
+            GTIN::Gtin14(_) => GtinType::Gtin14,
+        }
+    }
+
     /// Returns the name of this GTIN format (e.g., "UPC-A", "EAN-13").
     pub fn format_name(&self) -> &'static str {
-        match self {
-            GTIN::UpcE(_) => "UPC-E",
-            GTIN::UpcA(_) => "UPC-A",
-            GTIN::Ean8(_) => "EAN-8",
-            GTIN::Ean13(_) => "EAN-13",
-            GTIN::Gtin14(_) => "GTIN-14",
-        }
+        self.gtin_type().format_name()
     }
 
     /// Returns the number of digits in this GTIN. Always 8-14.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.digits().len()
+    }
+
+    /// Generates a random GTIN using one of the supported types.
+    ///
+    /// The returned GTIN always contains a valid checksum digit.
+    #[cfg(feature = "random")]
+    pub fn random() -> Self {
+        let mut rng = rand::thread_rng();
+        Self::random_with_rng(&mut rng)
+    }
+
+    /// Generates a random GTIN of the requested type.
+    ///
+    /// The returned GTIN always contains a valid checksum digit.
+    /// EAN-8 and EAN-13 values use a non-zero leading digit so they round-trip
+    /// through this crate's automatic format detection as the requested type.
+    #[cfg(feature = "random")]
+    pub fn random_of_type(gtin_type: GtinType) -> Self {
+        let mut rng = rand::thread_rng();
+        Self::random_of_type_with_rng(gtin_type, &mut rng)
+    }
+
+    /// Generates a random GTIN using the supplied random number generator.
+    ///
+    /// The returned GTIN always contains a valid checksum digit.
+    #[cfg(feature = "random")]
+    pub fn random_with_rng<R>(rng: &mut R) -> Self
+    where
+        R: Rng + ?Sized,
+    {
+        let index = rng.gen_range(0..GtinType::ALL.len());
+        Self::random_of_type_with_rng(GtinType::ALL[index], rng)
+    }
+
+    /// Generates a random GTIN of the requested type using the supplied random number generator.
+    ///
+    /// The returned GTIN always contains a valid checksum digit.
+    /// EAN-8 and EAN-13 values use a non-zero leading digit so they round-trip
+    /// through this crate's automatic format detection as the requested type.
+    #[cfg(feature = "random")]
+    pub fn random_of_type_with_rng<R>(gtin_type: GtinType, rng: &mut R) -> Self
+    where
+        R: Rng + ?Sized,
+    {
+        match gtin_type {
+            GtinType::UpcE => GTIN::UpcE(random_gtin_digits(rng, FirstDigit::Fixed(0))),
+            GtinType::UpcA => GTIN::UpcA(random_gtin_digits(rng, FirstDigit::Any)),
+            GtinType::Ean8 => GTIN::Ean8(random_gtin_digits(rng, FirstDigit::NonZero)),
+            GtinType::Ean13 => GTIN::Ean13(random_gtin_digits(rng, FirstDigit::NonZero)),
+            GtinType::Gtin14 => GTIN::Gtin14(random_gtin_digits(rng, FirstDigit::Any)),
+        }
     }
 
     /// Parses an 8-digit input explicitly as EAN-8, bypassing the UPC-E/EAN-8 heuristic.
@@ -199,6 +305,7 @@ impl GTIN {
     }
 
     /// Returns the ISO 3166-1 alpha-2 country code for this GTIN, if determinable.
+    /// A full list of the country code ranges can be found at: https://en.wikipedia.org/wiki/List_of_GS1_country_codes
     pub fn country_code(&self) -> Option<&'static str> {
         match self.number_system() {
             NumberSystem::Drug => Some("US"),
@@ -272,6 +379,34 @@ impl GTIN {
     }
 }
 
+#[cfg(feature = "random")]
+enum FirstDigit {
+    Any,
+    NonZero,
+    Fixed(u8),
+}
+
+#[cfg(feature = "random")]
+fn random_gtin_digits<const N: usize, R>(rng: &mut R, first_digit: FirstDigit) -> [u8; N]
+where
+    R: Rng + ?Sized,
+{
+    let mut digits = [0u8; N];
+
+    digits[0] = match first_digit {
+        FirstDigit::Any => rng.gen_range(0..=9),
+        FirstDigit::NonZero => rng.gen_range(1..=9),
+        FirstDigit::Fixed(digit) => digit,
+    };
+    for digit in &mut digits[1..N - 1] {
+        *digit = rng.gen_range(0..=9);
+    }
+    digits[N - 1] = util::calculate_checksum_digit(&digits[..N - 1]);
+
+    digits
+}
+
+#[cfg(feature = "serde")]
 impl Serialize for GTIN {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -281,6 +416,7 @@ impl Serialize for GTIN {
     }
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for GTIN {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

@@ -1,3 +1,8 @@
+#[cfg(feature = "random")]
+use rand::{SeedableRng, rngs::StdRng};
+
+#[cfg(feature = "random")]
+use crate::GtinType;
 use crate::{GTIN, GtinError, NumberSystem};
 
 #[test]
@@ -116,9 +121,43 @@ fn len() {
     assert_eq!(GTIN::try_from("52013485").unwrap().len(), 8);
 }
 
+#[test]
+#[cfg(feature = "random")]
+fn generate_random_gtins_of_requested_type() {
+    let mut rng = StdRng::seed_from_u64(42);
+
+    for gtin_type in GtinType::ALL {
+        for _ in 0..50 {
+            let gtin = GTIN::random_of_type_with_rng(gtin_type, &mut rng);
+            let serialized = gtin.to_string();
+            let reparsed = GTIN::try_from(serialized.as_str()).unwrap();
+
+            assert_eq!(gtin.gtin_type(), gtin_type);
+            assert_eq!(gtin.format_name(), gtin_type.format_name());
+            assert_eq!(gtin.len(), gtin_type.digit_count());
+            assert_eq!(reparsed, gtin);
+        }
+    }
+}
+
+#[test]
+#[cfg(feature = "random")]
+fn generate_random_gtins_with_random_type() {
+    let mut rng = StdRng::seed_from_u64(123);
+
+    for _ in 0..50 {
+        let gtin = GTIN::random_with_rng(&mut rng);
+        let serialized = gtin.to_string();
+
+        assert!(GtinType::ALL.contains(&gtin.gtin_type()));
+        assert_eq!(GTIN::try_from(serialized.as_str()).unwrap(), gtin);
+    }
+}
+
 // serde tests
 
 #[test]
+#[cfg(feature = "serde")]
 fn serialize_upca() {
     let gtin = GTIN::UpcA([0, 7, 1, 7, 2, 0, 5, 3, 9, 7, 7, 4]);
     let serialized = serde_json::to_string(&gtin).unwrap();
@@ -126,6 +165,7 @@ fn serialize_upca() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn deserialize_upca_with_spaces() {
     let data = "\"0 71720 53977 4\"";
     let deserialized: GTIN = serde_json::from_str(data).unwrap();
@@ -136,6 +176,7 @@ fn deserialize_upca_with_spaces() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn deserialize_upca_with_missing_initial_zero() {
     let data = "\"71720 53977 4\"";
     let deserialized: GTIN = serde_json::from_str(data).unwrap();
@@ -146,6 +187,7 @@ fn deserialize_upca_with_missing_initial_zero() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn round_trip_serialization() {
     let gtin = GTIN::UpcA([0, 7, 1, 7, 2, 0, 5, 3, 9, 7, 7, 4]);
     let serialized = serde_json::to_string(&gtin).unwrap();
@@ -154,6 +196,7 @@ fn round_trip_serialization() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn json_serialize_product() {
     use serde::{Deserialize, Serialize};
 
@@ -171,6 +214,7 @@ fn json_serialize_product() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn json_deserialize_product() {
     use serde::{Deserialize, Serialize};
 
@@ -189,6 +233,7 @@ fn json_deserialize_product() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn deserialize_invalid_gtin() {
     use serde::{Deserialize, Serialize};
 
