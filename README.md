@@ -9,10 +9,25 @@ Supports UPC-A, UPC-E, EAN-8, EAN-13, and GTIN-14 formats.
 - Parse GTINs from strings, handling spaces, hyphens, and other separators
 - Automatic format detection by digit count and structure
 - Checksum validation using the standard mod-10 algorithm
+- Optional random GTIN generation with valid checksums
 - Country code lookup via GS1 prefix
 - Number system classification (general, ISBN, ISSN, store use, etc.)
-- Serde support for JSON serialization/deserialization
+- Optional serde support for JSON serialization/deserialization
 - Handles UPC-A codes with stripped leading zeros (11-digit input)
+
+## Cargo features
+
+This crate has no default features. Enable optional functionality as needed:
+
+```toml
+[dependencies]
+gtin = { version = "0.3", features = ["random", "serde"] }
+```
+
+| Feature  | Enables                                      |
+|----------|----------------------------------------------|
+| `random` | Random GTIN generation via `rand`            |
+| `serde`  | `Serialize`/`Deserialize` impls for `GTIN`   |
 
 ## Usage
 
@@ -38,7 +53,27 @@ let ean8 = GTIN::parse_ean8("52013485").unwrap();
 let upce = GTIN::parse_upce("04182634").unwrap();
 ```
 
+### Random generation
+
+Requires the `random` feature.
+
+Generate a random GTIN with a valid checksum, optionally choosing the format:
+
+```rust
+use gtin::{GTIN, GtinType};
+
+let any = GTIN::random();
+let upca = GTIN::random_of_type(GtinType::UpcA);
+let ean13 = GTIN::random_of_type(GtinType::Ean13);
+
+assert!(GTIN::try_from(any.to_string().as_str()).is_ok());
+assert_eq!(upca.format_name(), "UPC-A");
+assert_eq!(ean13.format_name(), "EAN-13");
+```
+
 ### Serde support
+
+Requires the `serde` feature.
 
 GTINs serialize as digit strings and deserialize with the same flexible parsing as `parse()`:
 
