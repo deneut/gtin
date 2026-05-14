@@ -13,6 +13,7 @@ Supports UPC-A, UPC-E, EAN-8, EAN-13, and GTIN-14 formats.
 - Country code lookup via GS1 prefix
 - Number system classification (general, ISBN, ISSN, store use, etc.)
 - Optional serde support for JSON serialization/deserialization
+- Optional SQLx support for PostgreSQL text columns
 - Handles UPC-A codes with stripped leading zeros (11-digit input)
 
 ## Cargo features
@@ -21,13 +22,14 @@ This crate has no default features. Enable optional functionality as needed:
 
 ```toml
 [dependencies]
-gtin = { version = "0.3", features = ["random", "serde"] }
+gtin = { version = "0.3", features = ["random", "serde", "sqlx"] }
 ```
 
-| Feature  | Enables                                      |
-|----------|----------------------------------------------|
-| `random` | Random GTIN generation via `rand`            |
-| `serde`  | `Serialize`/`Deserialize` impls for `GTIN`   |
+| Feature  | Enables                                               |
+|----------|-------------------------------------------------------|
+| `random` | Random GTIN generation via `rand`                     |
+| `serde`  | `Serialize`/`Deserialize` impls for `GTIN`            |
+| `sqlx`   | `Type`/`Encode`/`Decode` impls for SQLx + PostgreSQL  |
 
 ## Usage
 
@@ -89,6 +91,27 @@ struct Product {
 
 let json = r#"{"name": "Oreo", "gtin": "0 71720 53977 4"}"#;
 let product: Product = serde_json::from_str(json).unwrap();
+```
+
+### SQLx support
+
+Requires the `sqlx` feature.
+
+GTINs encode to PostgreSQL as canonical digit strings and decode from PostgreSQL text-like columns:
+
+```rust
+use gtin::GTIN;
+
+let gtin: GTIN = "0 71720 53977 4".parse().unwrap();
+
+sqlx::query("insert into products (gtin) values ($1)")
+    .bind(gtin)
+    .execute(&pool)
+    .await?;
+
+let selected: GTIN = sqlx::query_scalar("select gtin from products limit 1")
+    .fetch_one(&pool)
+    .await?;
 ```
 
 ### Error handling

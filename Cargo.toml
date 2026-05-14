@@ -1,16 +1,18 @@
 [package]
 name = "gtin"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 
 [features]
 default = []
 random = ["dep:rand"]
 serde = ["dep:serde"]
+sqlx = ["dep:sqlx"]
 
 [dependencies]
 rand = { version = "0.8", optional = true }
 serde = { version = "1", optional = true }
+sqlx = { version = "0.8", default-features = false, features = ["postgres"], optional = true }
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

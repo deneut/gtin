@@ -6,6 +6,7 @@
 //!
 //! - `random`: random GTIN generation with valid checksums.
 //! - `serde`: JSON-friendly serialization and deserialization support.
+//! - `sqlx`: PostgreSQL encode/decode support for SQLx.
 //!
 //! # Examples
 //!
@@ -424,6 +425,59 @@ impl<'de> Deserialize<'de> for GTIN {
     {
         let s = String::deserialize(deserializer)?;
         GTIN::try_from(s.as_str()).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl sqlx::Type<sqlx::Postgres> for GTIN {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <String as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+
+    fn compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
+        <String as sqlx::Type<sqlx::Postgres>>::compatible(ty)
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl sqlx::postgres::types::PgHasArrayType for GTIN {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        <String as sqlx::postgres::types::PgHasArrayType>::array_type_info()
+    }
+
+    fn array_compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
+        <String as sqlx::postgres::types::PgHasArrayType>::array_compatible(ty)
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl<'q> sqlx::Encode<'q, sqlx::Postgres> for GTIN {
+    fn encode_by_ref(
+        &self,
+        buf: &mut <sqlx::Postgres as sqlx::Database>::ArgumentBuffer<'q>,
+    ) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
+        <String as sqlx::Encode<'q, sqlx::Postgres>>::encode(
+            util::digits_to_string(self.digits()),
+            buf,
+        )
+    }
+
+    fn produces(&self) -> Option<sqlx::postgres::PgTypeInfo> {
+        Some(<Self as sqlx::Type<sqlx::Postgres>>::type_info())
+    }
+
+    fn size_hint(&self) -> usize {
+        self.len()
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for GTIN {
+    fn decode(
+        value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let value = <&str as sqlx::Decode<'r, sqlx::Postgres>>::decode(value)?;
+        Self::try_from(value).map_err(Into::into)
     }
 }
 

@@ -250,3 +250,33 @@ fn deserialize_invalid_gtin() {
         "Expected deserialization to fail with an invalid GTIN"
     );
 }
+
+#[test]
+#[cfg(feature = "sqlx")]
+fn sqlx_postgres_traits_are_available() {
+    fn assert_type<T>()
+    where
+        T: sqlx::Type<sqlx::Postgres>,
+    {
+    }
+
+    fn assert_encode<T>()
+    where
+        T: sqlx::Type<sqlx::Postgres>,
+        for<'q> T: sqlx::Encode<'q, sqlx::Postgres>,
+    {
+    }
+
+    fn assert_decode<T>()
+    where
+        for<'r> T: sqlx::Decode<'r, sqlx::Postgres>,
+    {
+    }
+
+    assert_type::<GTIN>();
+    assert_type::<Option<GTIN>>();
+    assert_encode::<GTIN>();
+    assert_encode::<Option<GTIN>>();
+    assert_decode::<GTIN>();
+    assert_decode::<Option<GTIN>>();
+}
