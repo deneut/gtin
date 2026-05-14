@@ -199,6 +199,7 @@ impl GTIN {
     }
 
     /// Returns the ISO 3166-1 alpha-2 country code for this GTIN, if determinable.
+    /// A full list of the country code ranges can be found at: https://en.wikipedia.org/wiki/List_of_GS1_country_codes
     pub fn country_code(&self) -> Option<&'static str> {
         match self.number_system() {
             NumberSystem::Drug => Some("US"),
