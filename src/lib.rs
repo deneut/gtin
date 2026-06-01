@@ -290,6 +290,18 @@ impl GTIN {
         }
     }
 
+    /// Converts this GTIN to a UPC-A representation, if possible.
+    ///
+    /// Returns `Some` for UPC-A and UPC-E. Returns `None` for EAN-8, EAN-13,
+    /// and GTIN-14, which have different structures that don't map directly to UPC-A.
+    pub fn as_upca(self) -> Option<GTIN> {
+        match self {
+            GTIN::UpcA(_) => Some(self),
+            GTIN::UpcE(digits) => util::expand_upce_to_upca(&digits).ok(),
+            _ => None,
+        }
+    }
+
     /// Returns the 3-digit GS1 prefix used for country and number system identification.
     fn gs1_prefix(&self) -> Option<[u8; 3]> {
         match self {
