@@ -21,7 +21,7 @@
 use std::fmt::{Display, Formatter};
 
 #[cfg(feature = "random")]
-use rand::Rng;
+use rand::{Rng, RngExt};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -200,7 +200,7 @@ impl GTIN {
     /// The returned GTIN always contains a valid checksum digit.
     #[cfg(feature = "random")]
     pub fn random() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         Self::random_with_rng(&mut rng)
     }
 
@@ -211,7 +211,7 @@ impl GTIN {
     /// through this crate's automatic format detection as the requested type.
     #[cfg(feature = "random")]
     pub fn random_of_type(gtin_type: GtinType) -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         Self::random_of_type_with_rng(gtin_type, &mut rng)
     }
 
@@ -223,7 +223,7 @@ impl GTIN {
     where
         R: Rng + ?Sized,
     {
-        let index = rng.gen_range(0..GtinType::ALL.len());
+        let index = rng.random_range(0..GtinType::ALL.len());
         Self::random_of_type_with_rng(GtinType::ALL[index], rng)
     }
 
@@ -413,7 +413,7 @@ where
 {
     let mut digits = [0u8; 8];
     for digit in &mut digits[1..7] {
-        *digit = rng.gen_range(0..=9);
+        *digit = rng.random_range(0..=9);
     }
     let upca = util::expand_upce_to_upca(&digits[1..7])
         .expect("6-digit UPC-E body always expands to a UPC-A");
@@ -429,11 +429,11 @@ where
     let mut digits = [0u8; N];
 
     digits[0] = match first_digit {
-        FirstDigit::Any => rng.gen_range(0..=9),
-        FirstDigit::NonZero => rng.gen_range(1..=9),
+        FirstDigit::Any => rng.random_range(0..=9),
+        FirstDigit::NonZero => rng.random_range(1..=9),
     };
     for digit in &mut digits[1..N - 1] {
-        *digit = rng.gen_range(0..=9);
+        *digit = rng.random_range(0..=9);
     }
     digits[N - 1] = util::calculate_checksum_digit(&digits[..N - 1]);
 
