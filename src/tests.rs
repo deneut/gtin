@@ -10,7 +10,12 @@ fn parse_formats() {
     let cases = vec![
         ("071720539774", "UPC-A"),
         ("0041303073414", "UPC-A"),
-        ("04182634", "UPC-E"),
+        ("04182635", "UPC-E"),
+        ("04940308", "UPC-E"),
+        // Valid as EAN-8 but not as UPC-E (its UPC-E check digit would be 5).
+        ("04182634", "EAN-8"),
+        // Valid under both check-digit rules; UPC-E takes precedence.
+        ("01123456", "UPC-E"),
         ("52013485", "EAN-8"),
         ("8595701530526", "EAN-13"),
         ("00012345678905", "GTIN-14"),
@@ -100,18 +105,27 @@ fn parse_from_str_trait() {
 
 #[test]
 fn explicit_parse_ean8() {
-    // "04182634" starts with 0 so try_from would classify it as UPC-E,
-    // but parse_ean8 forces EAN-8.
-    let gtin = GTIN::parse_ean8("04182634").unwrap();
+    // "01123456" is valid under both check-digit rules, so try_from
+    // classifies it as UPC-E, but parse_ean8 forces EAN-8.
+    let gtin = GTIN::parse_ean8("01123456").unwrap();
     assert_eq!(gtin.format_name(), "EAN-8");
 }
 
 #[test]
 fn explicit_parse_upce() {
-    // "52013485" starts with non-zero so try_from would classify it as EAN-8,
-    // but parse_upce forces UPC-E.
-    let gtin = GTIN::parse_upce("52013485").unwrap();
+    let gtin = GTIN::parse_upce("04940308").unwrap();
     assert_eq!(gtin.format_name(), "UPC-E");
+
+    // Valid EAN-8, but its check digit doesn't match the expanded UPC-A.
+    assert_eq!(
+        GTIN::parse_upce("04182634"),
+        Err(GtinError::InvalidChecksum)
+    );
+    // UPC-E must start with number system digit 0.
+    assert_eq!(
+        GTIN::parse_upce("52013485"),
+        Err(GtinError::InvalidChecksum)
+    );
 }
 
 #[test]

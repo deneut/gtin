@@ -125,23 +125,25 @@ impl TryFrom<&str> for GTIN {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let mut digits = util::extract_digits(value);
 
+        if digits.len() < 8 || digits.len() > 14 {
+            return Err(GtinError::InvalidLength(digits.len()));
+        }
+
+        // UPC-E uses a different check-digit rule than the other formats:
+        // its check digit is the check digit of the expanded UPC-A. Try it
+        // before the standard checksum. UPC-E always starts with 0 (number
+        // system digit); an 8-digit code that fails UPC-E validation may
+        // still be a valid EAN-8.
+        if util::validate_upce(&digits) {
+            return Ok(GTIN::UpcE(digits.try_into().unwrap()));
+        }
+
         if !util::validate_gtin(&digits) {
-            if digits.len() < 8 || digits.len() > 14 {
-                return Err(GtinError::InvalidLength(digits.len()));
-            }
             return Err(GtinError::InvalidChecksum);
         }
 
         match digits.len() {
-            8 => {
-                // UPC-E always starts with 0 (number system digit).
-                // If the first digit is non-zero, this must be an EAN-8.
-                if digits[0] != 0 {
-                    Ok(GTIN::Ean8(digits.try_into().unwrap()))
-                } else {
-                    Ok(GTIN::UpcE(digits.try_into().unwrap()))
-                }
-            }
+            8 => Ok(GTIN::Ean8(digits.try_into().unwrap())),
             // 11 digits is likely a UPC-A with a leading zero stripped by another system
             11 => {
                 digits.insert(0, 0);
@@ -236,7 +238,7 @@ impl GTIN {
         R: Rng + ?Sized,
     {
         match gtin_type {
-            GtinType::UpcE => GTIN::UpcE(random_gtin_digits(rng, FirstDigit::Fixed(0))),
+            GtinType::UpcE => GTIN::UpcE(random_upce_digits(rng)),
             GtinType::UpcA => GTIN::UpcA(random_gtin_digits(rng, FirstDigit::Any)),
             GtinType::Ean8 => GTIN::Ean8(random_gtin_digits(rng, FirstDigit::NonZero)),
             GtinType::Ean13 => GTIN::Ean13(random_gtin_digits(rng, FirstDigit::NonZero)),
@@ -257,12 +259,16 @@ impl GTIN {
     }
 
     /// Parses an 8-digit input explicitly as UPC-E, bypassing the UPC-E/EAN-8 heuristic.
+    ///
+    /// The check digit is validated against the expanded UPC-A equivalent,
+    /// so the input must be a structurally valid UPC-E (leading number
+    /// system digit 0).
     pub fn parse_upce(input: &str) -> Result<Self, GtinError> {
         let digits = util::extract_digits(input);
         if digits.len() != 8 {
             return Err(GtinError::InvalidLength(digits.len()));
         }
-        if !util::validate_gtin(&digits) {
+        if !util::validate_upce(&digits) {
             return Err(GtinError::InvalidChecksum);
         }
         Ok(GTIN::UpcE(digits.try_into().unwrap()))
@@ -396,7 +402,23 @@ impl GTIN {
 enum FirstDigit {
     Any,
     NonZero,
-    Fixed(u8),
+}
+
+/// Generates random UPC-E digits: number system 0, six random body digits,
+/// and a check digit taken from the expanded UPC-A equivalent.
+#[cfg(feature = "random")]
+fn random_upce_digits<R>(rng: &mut R) -> [u8; 8]
+where
+    R: Rng + ?Sized,
+{
+    let mut digits = [0u8; 8];
+    for digit in &mut digits[1..7] {
+        *digit = rng.gen_range(0..=9);
+    }
+    let upca = util::expand_upce_to_upca(&digits[1..7])
+        .expect("6-digit UPC-E body always expands to a UPC-A");
+    digits[7] = upca.digits()[11];
+    digits
 }
 
 #[cfg(feature = "random")]
@@ -409,7 +431,6 @@ where
     digits[0] = match first_digit {
         FirstDigit::Any => rng.gen_range(0..=9),
         FirstDigit::NonZero => rng.gen_range(1..=9),
-        FirstDigit::Fixed(digit) => digit,
     };
     for digit in &mut digits[1..N - 1] {
         *digit = rng.gen_range(0..=9);

@@ -1,6 +1,6 @@
 [package]
 name = "gtin"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 
 [features]
@@ -10,7 +10,7 @@ serde = ["dep:serde"]
 sqlx = ["dep:sqlx"]
 
 [dependencies]
-rand = { version = "0.8", optional = true }
+rand = { version = "0.10", optional = true }
 serde = { version = "1", optional = true }
 sqlx = { version = "0.8", default-features = false, features = ["postgres"], optional = true }
 

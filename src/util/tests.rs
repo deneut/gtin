@@ -1,8 +1,12 @@
-use crate::util::{expand_upce_to_upca, extract_digits, validate_gtin};
+use crate::util::{expand_upce_to_upca, extract_digits, validate_gtin, validate_upce};
 
 #[test]
 fn expand_upce() {
-    let cases = vec![("04182634", "041800000265"), ("0 123450 3", "012000003455")];
+    let cases = vec![
+        ("04182634", "041800000265"),
+        ("0 123450 3", "012000003455"),
+        ("04940308", "049000004038"),
+    ];
 
     for (upce_str, expected_upca_str) in cases {
         let upce_digits = extract_digits(upce_str);
@@ -40,6 +44,30 @@ fn validate_digits() {
             validity,
             "Failed to match GTIN: {}",
             gtin
+        );
+    }
+}
+
+#[test]
+fn validate_upce_digits() {
+    let cases = vec![
+        // Check digit matches the expanded UPC-A (049000004038).
+        ("04940308", true),
+        ("04182635", true),
+        // Valid EAN-8 checksum, but not a valid UPC-E check digit.
+        ("04182634", false),
+        // Number system digit must be 0.
+        ("52013485", false),
+        // Wrong length.
+        ("0494030", false),
+    ];
+
+    for (upce, validity) in cases {
+        assert_eq!(
+            validate_upce(&extract_digits(upce)),
+            validity,
+            "Failed to match UPC-E: {}",
+            upce
         );
     }
 }
