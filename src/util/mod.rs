@@ -32,6 +32,21 @@ pub(crate) fn validate_gtin(digits: &[u8]) -> bool {
     checksum_digit == calculate_checksum_digit(&digits[..checksum_index])
 }
 
+/// Validates an 8-digit UPC-E code.
+///
+/// A UPC-E check digit is not a checksum over the 8 compressed digits;
+/// it is the check digit of the expanded UPC-A equivalent.
+pub(crate) fn validate_upce(digits: &[u8]) -> bool {
+    if digits.len() != 8 || digits[0] != 0 {
+        return false;
+    }
+
+    match expand_upce_to_upca(digits) {
+        Ok(upca) => upca.digits()[11] == digits[7],
+        Err(_) => false,
+    }
+}
+
 pub(crate) fn extract_digits(input: &str) -> Vec<u8> {
     input
         .chars()
