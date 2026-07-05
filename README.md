@@ -22,7 +22,7 @@ This crate has no default features. Enable optional functionality as needed:
 
 ```toml
 [dependencies]
-gtin = { version = "0.3", features = ["random", "serde", "sqlx"] }
+gtin = { version = "0.5", features = ["random", "serde", "sqlx"] }
 ```
 
 | Feature  | Enables                                               |
