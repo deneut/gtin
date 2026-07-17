@@ -308,6 +308,55 @@ impl GTIN {
         }
     }
 
+    /// Converts this GTIN to its zero-suppressed UPC-E representation, if possible.
+    ///
+    /// Returns `Some` for UPC-E and for UPC-A codes whose digits match one of
+    /// the GS1 zero-suppression patterns (number system 0 plus the required
+    /// zeros in the manufacturer and item numbers). Returns `None` for
+    /// UPC-A codes that cannot be suppressed and for all other formats.
+    ///
+    /// This is the inverse of [`GTIN::as_upca`]: a UPC-E that another system
+    /// stored in its expanded UPC-A form is recovered exactly.
+    pub fn as_upce(self) -> Option<GTIN> {
+        match self {
+            GTIN::UpcE(_) => Some(self),
+            GTIN::UpcA(digits) => util::compress_upca_to_upce(&digits).ok(),
+            _ => None,
+        }
+    }
+
+    /// Converts this GTIN to an EAN-8 representation, if possible.
+    ///
+    /// EAN-8 codes are assigned from their own GS1 namespace rather than
+    /// derived from a longer code, so the only conversion this performs is
+    /// recovering an EAN-8 that another system stored zero-padded to 12, 13,
+    /// or 14 digits. Returns `Some` for EAN-8 itself and for longer codes
+    /// that are all zeros except the trailing 8 digits (with a non-zero
+    /// leading EAN-8 digit, matching this crate's format-detection
+    /// heuristic). Returns `None` otherwise.
+    ///
+    /// Stripping leading zeros preserves the check digit, so the result is
+    /// always a valid EAN-8 when the input checksum was valid.
+    pub fn as_ean8(self) -> Option<GTIN> {
+        match self {
+            GTIN::Ean8(_) => Some(self),
+            GTIN::UpcA(d) => Self::unpad_ean8(&d),
+            GTIN::Ean13(d) => Self::unpad_ean8(&d),
+            GTIN::Gtin14(d) => Self::unpad_ean8(&d),
+            GTIN::UpcE(_) => None,
+        }
+    }
+
+    /// Recovers a zero-padded EAN-8 from the trailing 8 digits of a longer code.
+    fn unpad_ean8(digits: &[u8]) -> Option<GTIN> {
+        let (padding, ean8) = digits.split_at(digits.len() - 8);
+        if padding.iter().all(|&d| d == 0) && ean8[0] != 0 {
+            Some(GTIN::Ean8(ean8.try_into().unwrap()))
+        } else {
+            None
+        }
+    }
+
     /// Returns the 3-digit GS1 prefix used for country and number system identification.
     fn gs1_prefix(&self) -> Option<[u8; 3]> {
         match self {

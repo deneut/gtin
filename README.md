@@ -15,6 +15,8 @@ Supports UPC-A, UPC-E, EAN-8, EAN-13, and GTIN-14 formats.
 - Optional serde support for JSON serialization/deserialization
 - Optional SQLx support for PostgreSQL text columns
 - Handles UPC-A codes with stripped leading zeros (11-digit input)
+- Recovers short-format codes stored in expanded form (UPC-E from its
+  UPC-A expansion, EAN-8 from zero-padded 12/13/14-digit strings)
 
 ## Cargo features
 
@@ -54,6 +56,32 @@ use gtin::GTIN;
 let ean8 = GTIN::parse_ean8("52013485").unwrap();
 let upce = GTIN::parse_upce("04182634").unwrap();
 ```
+
+### Recovering short-format codes
+
+Some systems store short-format barcodes in an expanded or zero-padded form.
+`as_upce` compresses a UPC-A back to its zero-suppressed UPC-E, and `as_ean8`
+strips the padding from a zero-padded EAN-8:
+
+```rust
+use gtin::GTIN;
+
+// A UPC-E that was stored as its 12-digit UPC-A expansion.
+let expanded: GTIN = "041800000265".parse().unwrap();
+let upce = expanded.as_upce().unwrap();
+assert_eq!(upce.to_string(), "04182635");
+
+// An EAN-8 that was stored zero-padded to 13 digits.
+let padded: GTIN = "0000052013485".parse().unwrap();
+let ean8 = padded.as_ean8().unwrap();
+assert_eq!(ean8.to_string(), "52013485");
+```
+
+`as_upce` is the exact inverse of UPC-E expansion, so it only succeeds for
+codes matching a GS1 zero-suppression pattern. `as_ean8` succeeds only when
+every digit before the trailing eight is zero and the first EAN-8 digit is
+non-zero; genuine EAN-8 codes are assigned from their own GS1 namespace, so
+no other conversion from a longer code exists.
 
 ### Random generation
 

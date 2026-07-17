@@ -129,6 +129,55 @@ fn explicit_parse_upce() {
 }
 
 #[test]
+fn as_upce_recovers_expanded_upce() {
+    // A UPC-E stored in its expanded UPC-A form compresses back exactly.
+    let expanded = GTIN::try_from("041800000265").unwrap();
+    assert_eq!(expanded.format_name(), "UPC-A");
+
+    let upce = expanded.as_upce().unwrap();
+    assert_eq!(upce, GTIN::try_from("04182635").unwrap());
+    assert_eq!(upce.as_upca(), Some(expanded));
+
+    // UPC-E passes through unchanged.
+    assert_eq!(upce.as_upce(), Some(upce));
+}
+
+#[test]
+fn as_upce_rejects_unsuppressible_codes() {
+    // A UPC-A whose digits don't match any zero-suppression pattern.
+    assert_eq!(GTIN::try_from("071720539774").unwrap().as_upce(), None);
+    // Other formats never convert.
+    assert_eq!(GTIN::try_from("52013485").unwrap().as_upce(), None);
+    assert_eq!(GTIN::try_from("8595701530526").unwrap().as_upce(), None);
+}
+
+#[test]
+fn as_ean8_recovers_zero_padded_ean8() {
+    let ean8 = GTIN::try_from("52013485").unwrap();
+
+    // Zero-padded to 12 and 13 digits both parse as UPC-A; 14 as GTIN-14.
+    for padded in ["000052013485", "0000052013485", "00000052013485"] {
+        let gtin = GTIN::try_from(padded).unwrap();
+        assert_eq!(gtin.as_ean8(), Some(ean8), "input: {padded}");
+    }
+
+    // EAN-8 passes through unchanged.
+    assert_eq!(ean8.as_ean8(), Some(ean8));
+}
+
+#[test]
+fn as_ean8_rejects_non_padded_codes() {
+    // Ordinary codes with real digits in the padding positions.
+    assert_eq!(GTIN::try_from("071720539774").unwrap().as_ean8(), None);
+    assert_eq!(GTIN::try_from("8595701530526").unwrap().as_ean8(), None);
+    // Trailing 8 digits start with 0, so this is not treated as a padded
+    // EAN-8, matching the crate's leading-digit format heuristic.
+    assert_eq!(GTIN::try_from("0000004182634").unwrap().as_ean8(), None);
+    // UPC-E never converts to EAN-8.
+    assert_eq!(GTIN::try_from("04182635").unwrap().as_ean8(), None);
+}
+
+#[test]
 fn len() {
     assert_eq!(GTIN::try_from("071720539774").unwrap().len(), 12);
     assert_eq!(GTIN::try_from("8595701530526").unwrap().len(), 13);
