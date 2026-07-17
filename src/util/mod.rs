@@ -119,5 +119,42 @@ pub(crate) fn expand_upce_to_upca(upce: &[u8]) -> Result<GTIN, GtinError> {
     Ok(GTIN::UpcA(result))
 }
 
+/// Compresses a 12-digit UPC-A into its zero-suppressed UPC-E form.
+///
+/// Only number system 0 codes whose manufacturer and item digits match one
+/// of the four GS1 zero-suppression patterns can be compressed. The patterns
+/// are tried in standard order, so the result is the canonical UPC-E for
+/// codes that could be suppressed more than one way. The UPC-E check digit
+/// is the UPC-A check digit, so `expand_upce_to_upca` recovers the input
+/// exactly.
+pub(crate) fn compress_upca_to_upce(upca: &[u8]) -> Result<GTIN, GtinError> {
+    if upca.len() != 12 || upca[0] != 0 {
+        return Err(GtinError::ConversionFailed);
+    }
+
+    let (m, i) = (&upca[1..6], &upca[6..11]);
+
+    let body: [u8; 6] = if m[3] == 0 && m[4] == 0 && m[2] <= 2 && i[..2] == [0, 0] {
+        // Manufacturer ends 000, 100, or 200; item up to 999.
+        [m[0], m[1], i[2], i[3], i[4], m[2]]
+    } else if m[3] == 0 && m[4] == 0 && i[..3] == [0, 0, 0] {
+        // Manufacturer ends 00; item up to 99.
+        [m[0], m[1], m[2], i[3], i[4], 3]
+    } else if m[4] == 0 && i[..4] == [0, 0, 0, 0] {
+        // Manufacturer ends 0; item up to 9.
+        [m[0], m[1], m[2], m[3], i[4], 4]
+    } else if i[..4] == [0, 0, 0, 0] && i[4] >= 5 {
+        // Any manufacturer; item 5 through 9.
+        [m[0], m[1], m[2], m[3], m[4], i[4]]
+    } else {
+        return Err(GtinError::ConversionFailed);
+    };
+
+    let mut upce = [0u8; 8];
+    upce[1..7].copy_from_slice(&body);
+    upce[7] = upca[11];
+    Ok(GTIN::UpcE(upce))
+}
+
 #[cfg(test)]
 mod tests;

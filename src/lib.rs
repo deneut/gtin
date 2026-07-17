@@ -122,6 +122,15 @@ impl std::str::FromStr for GTIN {
 impl TryFrom<&str> for GTIN {
     type Error = GtinError;
 
+    /// Parses a GTIN, normalizing expanded short-format codes to their
+    /// canonical 8-digit form.
+    ///
+    /// A code whose digits are all zero except the trailing eight is
+    /// returned as EAN-8, and a UPC-A matching a GS1 zero-suppression
+    /// pattern is returned as UPC-E. When a code qualifies for both, the
+    /// EAN-8 interpretation wins: GS1 reserves the leading-zeros space for
+    /// GTIN-8. Use [`GTIN::as_upca`] or [`GTIN::as_ean13`] to expand the
+    /// result where a longer form is needed.
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let mut digits = util::extract_digits(value);
 
@@ -142,22 +151,27 @@ impl TryFrom<&str> for GTIN {
             return Err(GtinError::InvalidChecksum);
         }
 
-        match digits.len() {
-            8 => Ok(GTIN::Ean8(digits.try_into().unwrap())),
+        let gtin = match digits.len() {
+            8 => GTIN::Ean8(digits.try_into().unwrap()),
             // 11 digits is likely a UPC-A with a leading zero stripped by another system
             11 => {
                 digits.insert(0, 0);
-                Ok(GTIN::UpcA(digits.try_into().unwrap()))
+                GTIN::UpcA(digits.try_into().unwrap())
             }
-            12 => Ok(GTIN::UpcA(digits.try_into().unwrap())),
+            12 => GTIN::UpcA(digits.try_into().unwrap()),
             // EAN-13 with a leading 0 is equivalent to a UPC-A; prefer the
             // more specific representation so round-tripping through databases
             // that zero-pad UPC-A codes recovers the original format.
-            13 if digits[0] == 0 => Ok(GTIN::UpcA(digits[1..].try_into().unwrap())),
-            13 => Ok(GTIN::Ean13(digits.try_into().unwrap())),
-            14 => Ok(GTIN::Gtin14(digits.try_into().unwrap())),
-            n => Err(GtinError::InvalidLength(n)),
-        }
+            13 if digits[0] == 0 => GTIN::UpcA(digits[1..].try_into().unwrap()),
+            13 => GTIN::Ean13(digits.try_into().unwrap()),
+            14 => GTIN::Gtin14(digits.try_into().unwrap()),
+            n => return Err(GtinError::InvalidLength(n)),
+        };
+
+        // Normalize expanded short-format codes to their canonical 8-digit
+        // form, trying zero-padding before UPC-E suppression so the EAN-8
+        // interpretation wins when a code qualifies for both.
+        Ok(gtin.as_ean8().or_else(|| gtin.as_upce()).unwrap_or(gtin))
     }
 }
 
@@ -207,8 +221,10 @@ impl GTIN {
     /// Generates a random GTIN of the requested type.
     ///
     /// The returned GTIN always contains a valid checksum digit.
-    /// EAN-8 and EAN-13 values use a non-zero leading digit so they round-trip
-    /// through this crate's automatic format detection as the requested type.
+    /// EAN-8 and EAN-13 values use a non-zero leading digit, and UPC-A and
+    /// GTIN-14 values avoid the expanded short-format patterns that parsing
+    /// normalizes, so all results round-trip through this crate's automatic
+    /// format detection as the requested type.
     #[cfg(feature = "random")]
     pub fn random_of_type(gtin_type: GtinType) -> Self {
         let mut rng = rand::rng();
@@ -230,8 +246,10 @@ impl GTIN {
     /// Generates a random GTIN of the requested type using the supplied random number generator.
     ///
     /// The returned GTIN always contains a valid checksum digit.
-    /// EAN-8 and EAN-13 values use a non-zero leading digit so they round-trip
-    /// through this crate's automatic format detection as the requested type.
+    /// EAN-8 and EAN-13 values use a non-zero leading digit, and UPC-A and
+    /// GTIN-14 values avoid the expanded short-format patterns that parsing
+    /// normalizes, so all results round-trip through this crate's automatic
+    /// format detection as the requested type.
     #[cfg(feature = "random")]
     pub fn random_of_type_with_rng<R>(gtin_type: GtinType, rng: &mut R) -> Self
     where
@@ -239,10 +257,20 @@ impl GTIN {
     {
         match gtin_type {
             GtinType::UpcE => GTIN::UpcE(random_upce_digits(rng)),
-            GtinType::UpcA => GTIN::UpcA(random_gtin_digits(rng, FirstDigit::Any)),
+            GtinType::UpcA => loop {
+                let gtin = GTIN::UpcA(random_gtin_digits(rng, FirstDigit::Any));
+                if gtin.as_upce().is_none() && gtin.as_ean8().is_none() {
+                    break gtin;
+                }
+            },
             GtinType::Ean8 => GTIN::Ean8(random_gtin_digits(rng, FirstDigit::NonZero)),
             GtinType::Ean13 => GTIN::Ean13(random_gtin_digits(rng, FirstDigit::NonZero)),
-            GtinType::Gtin14 => GTIN::Gtin14(random_gtin_digits(rng, FirstDigit::Any)),
+            GtinType::Gtin14 => loop {
+                let gtin = GTIN::Gtin14(random_gtin_digits(rng, FirstDigit::Any));
+                if gtin.as_ean8().is_none() {
+                    break gtin;
+                }
+            },
         }
     }
 
@@ -305,6 +333,55 @@ impl GTIN {
             GTIN::UpcA(_) => Some(self),
             GTIN::UpcE(digits) => util::expand_upce_to_upca(&digits).ok(),
             _ => None,
+        }
+    }
+
+    /// Converts this GTIN to its zero-suppressed UPC-E representation, if possible.
+    ///
+    /// Returns `Some` for UPC-E and for UPC-A codes whose digits match one of
+    /// the GS1 zero-suppression patterns (number system 0 plus the required
+    /// zeros in the manufacturer and item numbers). Returns `None` for
+    /// UPC-A codes that cannot be suppressed and for all other formats.
+    ///
+    /// This is the inverse of [`GTIN::as_upca`]: a UPC-E that another system
+    /// stored in its expanded UPC-A form is recovered exactly.
+    pub fn as_upce(self) -> Option<GTIN> {
+        match self {
+            GTIN::UpcE(_) => Some(self),
+            GTIN::UpcA(digits) => util::compress_upca_to_upce(&digits).ok(),
+            _ => None,
+        }
+    }
+
+    /// Converts this GTIN to an EAN-8 representation, if possible.
+    ///
+    /// EAN-8 codes are assigned from their own GS1 namespace rather than
+    /// derived from a longer code, so the only conversion this performs is
+    /// recovering an EAN-8 that another system stored zero-padded to 12, 13,
+    /// or 14 digits. Returns `Some` for EAN-8 itself and for longer codes
+    /// that are all zeros except the trailing 8 digits (with a non-zero
+    /// leading EAN-8 digit, matching this crate's format-detection
+    /// heuristic). Returns `None` otherwise.
+    ///
+    /// Stripping leading zeros preserves the check digit, so the result is
+    /// always a valid EAN-8 when the input checksum was valid.
+    pub fn as_ean8(self) -> Option<GTIN> {
+        match self {
+            GTIN::Ean8(_) => Some(self),
+            GTIN::UpcA(d) => Self::unpad_ean8(&d),
+            GTIN::Ean13(d) => Self::unpad_ean8(&d),
+            GTIN::Gtin14(d) => Self::unpad_ean8(&d),
+            GTIN::UpcE(_) => None,
+        }
+    }
+
+    /// Recovers a zero-padded EAN-8 from the trailing 8 digits of a longer code.
+    fn unpad_ean8(digits: &[u8]) -> Option<GTIN> {
+        let (padding, ean8) = digits.split_at(digits.len() - 8);
+        if padding.iter().all(|&d| d == 0) && ean8[0] != 0 {
+            Some(GTIN::Ean8(ean8.try_into().unwrap()))
+        } else {
+            None
         }
     }
 
