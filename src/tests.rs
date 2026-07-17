@@ -19,6 +19,11 @@ fn parse_formats() {
         ("52013485", "EAN-8"),
         ("8595701530526", "EAN-13"),
         ("00012345678905", "GTIN-14"),
+        // Expanded short formats normalize to their canonical 8-digit form.
+        ("041800000265", "UPC-E"),
+        ("000052013485", "EAN-8"),
+        ("0000052013485", "EAN-8"),
+        ("00000052013485", "EAN-8"),
     ];
 
     for (input, expected_format) in cases {
@@ -130,13 +135,11 @@ fn explicit_parse_upce() {
 
 #[test]
 fn as_upce_recovers_expanded_upce() {
-    // A UPC-E stored in its expanded UPC-A form compresses back exactly.
-    let expanded = GTIN::try_from("041800000265").unwrap();
+    // A UPC-E expanded to its UPC-A form compresses back exactly.
+    let upce = GTIN::try_from("04182635").unwrap();
+    let expanded = upce.as_upca().unwrap();
     assert_eq!(expanded.format_name(), "UPC-A");
-
-    let upce = expanded.as_upce().unwrap();
-    assert_eq!(upce, GTIN::try_from("04182635").unwrap());
-    assert_eq!(upce.as_upca(), Some(expanded));
+    assert_eq!(expanded.as_upce(), Some(upce));
 
     // UPC-E passes through unchanged.
     assert_eq!(upce.as_upce(), Some(upce));
@@ -155,11 +158,12 @@ fn as_upce_rejects_unsuppressible_codes() {
 fn as_ean8_recovers_zero_padded_ean8() {
     let ean8 = GTIN::try_from("52013485").unwrap();
 
-    // Zero-padded to 12 and 13 digits both parse as UPC-A; 14 as GTIN-14.
-    for padded in ["000052013485", "0000052013485", "00000052013485"] {
-        let gtin = GTIN::try_from(padded).unwrap();
-        assert_eq!(gtin.as_ean8(), Some(ean8), "input: {padded}");
-    }
+    let padded_upca = GTIN::UpcA([0, 0, 0, 0, 5, 2, 0, 1, 3, 4, 8, 5]);
+    let padded_ean13 = GTIN::Ean13([0, 0, 0, 0, 0, 5, 2, 0, 1, 3, 4, 8, 5]);
+    let padded_gtin14 = GTIN::Gtin14([0, 0, 0, 0, 0, 0, 5, 2, 0, 1, 3, 4, 8, 5]);
+    assert_eq!(padded_upca.as_ean8(), Some(ean8));
+    assert_eq!(padded_ean13.as_ean8(), Some(ean8));
+    assert_eq!(padded_gtin14.as_ean8(), Some(ean8));
 
     // EAN-8 passes through unchanged.
     assert_eq!(ean8.as_ean8(), Some(ean8));
@@ -175,6 +179,44 @@ fn as_ean8_rejects_non_padded_codes() {
     assert_eq!(GTIN::try_from("0000004182634").unwrap().as_ean8(), None);
     // UPC-E never converts to EAN-8.
     assert_eq!(GTIN::try_from("04182635").unwrap().as_ean8(), None);
+}
+
+#[test]
+fn parse_normalizes_expanded_short_formats() {
+    // An expanded UPC-E parses to the same value as its 8-digit form.
+    assert_eq!(
+        GTIN::try_from("041800000265").unwrap(),
+        GTIN::try_from("04182635").unwrap()
+    );
+
+    // A zero-padded EAN-8 parses to the same value as its 8-digit form,
+    // whatever the padded length.
+    let ean8 = GTIN::try_from("52013485").unwrap();
+    for padded in ["000052013485", "0000052013485", "00000052013485"] {
+        assert_eq!(GTIN::try_from(padded).unwrap(), ean8, "input: {padded}");
+    }
+
+    // A code qualifying as both a zero-padded EAN-8 and a suppressible
+    // UPC-A normalizes to EAN-8: GS1 reserves the leading-zeros space
+    // for GTIN-8.
+    assert_eq!(
+        GTIN::try_from("000070000009").unwrap().format_name(),
+        "EAN-8"
+    );
+
+    // Codes that are not expansions parse unchanged.
+    assert_eq!(
+        GTIN::try_from("071720539774").unwrap().format_name(),
+        "UPC-A"
+    );
+    assert_eq!(
+        GTIN::try_from("0000004182634").unwrap().format_name(),
+        "UPC-A"
+    );
+    assert_eq!(
+        GTIN::try_from("00012345678905").unwrap().format_name(),
+        "GTIN-14"
+    );
 }
 
 #[test]
