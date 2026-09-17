@@ -564,9 +564,9 @@ impl sqlx::postgres::types::PgHasArrayType for GTIN {
 impl<'q> sqlx::Encode<'q, sqlx::Postgres> for GTIN {
     fn encode_by_ref(
         &self,
-        buf: &mut <sqlx::Postgres as sqlx::Database>::ArgumentBuffer<'q>,
+        buf: &mut <sqlx::Postgres as sqlx::Database>::ArgumentBuffer,
     ) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
-        <String as sqlx::Encode<'q, sqlx::Postgres>>::encode(
+        <String as sqlx::Encode<sqlx::Postgres>>::encode(
             util::digits_to_string(self.digits()),
             buf,
         )
