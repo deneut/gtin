@@ -566,10 +566,7 @@ impl<'q> sqlx::Encode<'q, sqlx::Postgres> for GTIN {
         &self,
         buf: &mut <sqlx::Postgres as sqlx::Database>::ArgumentBuffer,
     ) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
-        <String as sqlx::Encode<sqlx::Postgres>>::encode(
-            util::digits_to_string(self.digits()),
-            buf,
-        )
+        <String as sqlx::Encode<sqlx::Postgres>>::encode(util::digits_to_string(self.digits()), buf)
     }
 
     fn produces(&self) -> Option<sqlx::postgres::PgTypeInfo> {
