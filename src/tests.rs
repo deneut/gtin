@@ -134,6 +134,71 @@ fn explicit_parse_upce() {
 }
 
 #[test]
+fn as_gtin14_converts_all_formats() {
+    let cases = [
+        ("04182635", "00041800000265"),       // UPC-E
+        ("52013485", "00000052013485"),       // EAN-8
+        ("04182634", "00000004182634"),       // EAN-8 with a leading zero
+        ("071720539774", "00071720539774"),   // UPC-A
+        ("8595701530526", "08595701530526"),  // EAN-13
+        ("10012345678902", "10012345678902"), // GTIN-14
+    ];
+
+    for (input, expected) in cases {
+        let gtin14 = GTIN::try_from(input).unwrap().as_gtin14();
+        assert!(matches!(gtin14, GTIN::Gtin14(_)));
+        assert_eq!(gtin14.to_string(), expected, "input: {input}");
+    }
+}
+
+#[test]
+fn ambiguous_eight_digit_input_has_two_gtin14_keys() {
+    let input = "01123456";
+    let ean8 = GTIN::parse_ean8(input).unwrap();
+    let upce = GTIN::parse_upce(input).unwrap();
+    assert_eq!(ean8.as_gtin14().to_string(), "00000001123456");
+    assert_eq!(upce.as_gtin14().to_string(), "00011234000056");
+
+    // With number system 1, only the EAN-8 interpretation is supported.
+    let input = "11123453";
+    assert!(GTIN::parse_upce(input).is_err());
+    assert_eq!(
+        GTIN::try_from(input).unwrap().as_gtin14().to_string(),
+        "00000011123453"
+    );
+}
+
+#[test]
+fn gtin14_round_trips_all_short_codes_starting_with_zero_or_one() {
+    fn assert_round_trip(short: GTIN, stored: String) {
+        let key = short.as_gtin14();
+        assert_eq!(key.to_string(), stored, "short code: {short}");
+        let reparsed = GTIN::try_from(stored.as_str()).unwrap();
+        assert_eq!(reparsed.as_gtin14(), key, "stored key: {stored}");
+    }
+
+    for body in 0..1_000_000u32 {
+        let mut digits = [0; 8];
+        let mut rest = body;
+        for digit in digits[1..7].iter_mut().rev() {
+            *digit = (rest % 10) as u8;
+            rest /= 10;
+        }
+
+        let upca = crate::util::expand_upce_to_upca(&digits[1..7]).unwrap();
+        digits[7] = upca.digits()[11];
+        assert_round_trip(GTIN::UpcE(digits), format!("00{upca}"));
+
+        for prefix in [0, 1] {
+            digits[0] = prefix;
+            digits[7] = crate::util::calculate_checksum_digit(&digits[..7]);
+            let ean8 = GTIN::Ean8(digits);
+            assert_round_trip(ean8, format!("000000{ean8}"));
+        }
+    }
+}
+
+#[test]
 fn as_upce_recovers_expanded_upce() {
     // A UPC-E expanded to its UPC-A form compresses back exactly.
     let upce = GTIN::try_from("04182635").unwrap();

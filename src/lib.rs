@@ -302,6 +302,22 @@ impl GTIN {
         Ok(GTIN::UpcE(digits.try_into().unwrap()))
     }
 
+    /// Returns the same identifier in its 14-digit representation.
+    ///
+    /// Expands UPC-E to UPC-A first, then left-pads with zeros to 14 digits.
+    /// EAN-8 already contains the full identifier and receives six leading zeros.
+    pub fn as_gtin14(self) -> GTIN {
+        let gtin = match self {
+            GTIN::UpcE(digits) => util::expand_upce_to_upca(&digits)
+                .expect("an 8-digit UPC-E always expands to UPC-A"),
+            gtin => gtin,
+        };
+        let digits = gtin.digits();
+        let mut padded = [0; 14];
+        padded[14 - digits.len()..].copy_from_slice(digits);
+        GTIN::Gtin14(padded)
+    }
+
     /// Converts this GTIN to an EAN-13 representation, if possible.
     ///
     /// Returns `Some` for UPC-A, UPC-E, and EAN-13. Returns `None` for EAN-8
